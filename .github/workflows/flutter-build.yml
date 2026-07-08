@@ -11,7 +11,7 @@ on:
         default: "nightly"
       platform:          # 新增
         type: string
-        description: "Target platform: 'windows', 'macos', 'all'"
+        description: "Target platform: 'windows', 'macos', 'android', 'linux', 'all'"
         default: "all"
 
 # NOTE: F-Droid builder script 'flutter/build_fdroid.sh' reads environment
