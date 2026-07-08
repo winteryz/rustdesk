@@ -9,7 +9,7 @@ on:
       upload-tag:
         type: string
         default: "nightly"
-      platform:          # 新增
+      target-platform:          # 新增
         type: string
         description: "Target platform: 'windows', 'macos', 'android', 'linux', 'all'"
         default: "all"
@@ -82,7 +82,7 @@ jobs:
       target_version: Windows10
 
   build-for-windows-flutter:
-    if: ${{ inputs.platform == 'windows' || inputs.platform == 'all' }}
+    if: contains(inputs.target-platform, 'windows') || inputs.target-platform == 'all'
     name: ${{ matrix.job.target }}
     needs: [build-RustDeskTempTopMostWindow, generate-bridge]
     runs-on: ${{ matrix.job.os }}
@@ -654,7 +654,7 @@ jobs:
 
 
   build-for-macOS:
-    if: ${{ inputs.platform == 'macos' || inputs.platform == 'all' }}
+    if: contains(inputs.target-platform, 'macos') || inputs.target-platform == 'all'
     name: ${{ matrix.job.target }}
     runs-on: ${{ matrix.job.os }}
     needs: [generate-bridge]
@@ -877,6 +877,7 @@ jobs:
       - build-for-macOS
       - build-for-windows-flutter
       - build-for-windows-sciter
+    if: inputs.target-platform == 'all'
     runs-on: ubuntu-latest
     if: ${{ inputs.upload-artifact }}
     steps:
@@ -916,7 +917,7 @@ jobs:
           files: rustdesk-${{ env.VERSION }}-unsigned.tar.gz
 
   build-rustdesk-android:
-    if: ${{ inputs.platform == 'android' || inputs.platform == 'all' }}
+    if: contains(inputs.target-platform, 'android') || inputs.target-platform == 'all'
     needs: [generate-bridge]
     name: build rustdesk android apk ${{ matrix.job.target }}
     runs-on: ${{ matrix.job.os }}
@@ -1209,7 +1210,7 @@ jobs:
             signed-apk/rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}.apk
 
   build-rustdesk-android-universal:
-    if: ${{ inputs.platform == 'android' || inputs.platform == 'all' }}
+    if: contains(inputs.target-platform, 'android') || inputs.target-platform == 'all'
     needs: [build-rustdesk-android]
     name: build rustdesk android universal apk
     if: ${{ inputs.upload-artifact }}
@@ -1394,7 +1395,7 @@ jobs:
             signed-apk/rustdesk-${{ env.VERSION }}-universal${{ env.suffix }}.apk
 
   build-rustdesk-linux:
-    if: ${{ inputs.platform == 'linux' || inputs.platform == 'all' }}
+    if: contains(inputs.target-platform, 'linux') || inputs.target-platform == 'all'
     needs: [generate-bridge]
     name: build rustdesk linux ${{ matrix.job.target }}
     runs-on: ${{ matrix.job.on }}
@@ -1732,7 +1733,7 @@ jobs:
             res/rustdesk-${{ env.VERSION }}*.zst
 
   build-rustdesk-linux-sciter:
-    if: ${{ inputs.platform == 'linux' || inputs.platform == 'all' }}
+    if: contains(inputs.target-platform, 'linux') || inputs.target-platform == 'all'
     if: ${{ inputs.upload-artifact }}
     runs-on: ${{ matrix.job.on }}
     name: build-rustdesk-linux-sciter ${{ matrix.job.target }}
@@ -1960,6 +1961,7 @@ jobs:
           path: rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}-sciter.deb
 
   build-appimage:
+    if: (contains(inputs.target-platform, 'linux') || inputs.target-platform == 'all') && inputs.upload-artifact
     name: Build appimage ${{ matrix.job.target }}
     needs: [build-rustdesk-linux]
     runs-on: ubuntu-22.04
@@ -2011,6 +2013,7 @@ jobs:
             ./appimage/rustdesk-${{ env.VERSION }}-*.AppImage
 
   build-flatpak:
+    if: (contains(inputs.target-platform, 'linux') || inputs.target-platform == 'all') && inputs.upload-artifact
     name: Build flatpak ${{ matrix.job.target }}${{ matrix.job.suffix }}
     needs:
       - build-rustdesk-linux
