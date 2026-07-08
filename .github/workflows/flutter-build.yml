@@ -1958,11 +1958,10 @@ jobs:
           path: rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}-sciter.deb
 
   build-appimage:
-    if: (contains(inputs.target-platform, 'linux') || inputs.target-platform == 'all') && inputs.upload-artifact
     name: Build appimage ${{ matrix.job.target }}
     needs: [build-rustdesk-linux]
     runs-on: ubuntu-22.04
-    if: ${{ inputs.upload-artifact }}
+    if: ${{ inputs.upload-artifact }} && (contains(inputs.target-platform, 'linux') || inputs.target-platform == 'all') && inputs.upload-artifact
     strategy:
       fail-fast: false
       matrix:
