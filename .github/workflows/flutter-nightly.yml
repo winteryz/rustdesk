@@ -13,4 +13,4 @@ jobs:
     with:
       upload-artifact: true
       upload-tag: "nightly"
-      platform: "windows"   # 仅构建 Windows
+      target-platform: "windows"   # 仅构建 Windows
