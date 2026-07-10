@@ -31,25 +31,21 @@ jobs:
     - name: Setup Flutter
       uses: subosito/flutter-action@v2
       with:
-        flutter-version: '3.24.5' # RustDesk 1.4.x 对应版本
+        flutter-version: '3.24.5'
         channel: 'stable'
-        cache: true # 开启 Flutter 缓存
+        cache: true
 
-    - name: Setup vcpkg
-      shell: pwsh
+    - name: Clone vcpkg
       run: |
         git clone https://github.com/microsoft/vcpkg
-        cd vcpkg
-        ./bootstrap-vcpkg.bat
-        echo "VCPKG_ROOT=$PWD" >> $env:GITHUB_ENV
-        echo "$PWD" >> $env:GITHUB_PATH
+        echo "VCPKG_ROOT=$PWD/vcpkg" >> $GITHUB_ENV
 
-    - name: Install LLVM
+    - name: Bootstrap vcpkg
+      run: |
+        $VCPKG_ROOT/bootstrap-vcpkg.bat
+
+    - name: Install LLVM (for bindgen)
       run: choco install llvm --version=15.0.7 --allow-downgrade -y
-
-    - name: Setup sccache (Rust Cache)
-      uses: mozilla-actions/sccache-action@v0.0.6
-      # 这是 Flutter 路提速的核心，避免 Rust 重复编译
 
     - name: Cache cargo registry and vcpkg
       uses: actions/cache@v4
@@ -60,27 +56,28 @@ jobs:
           vcpkg/installed
         key: windows-flutter-${{ hashFiles('**/Cargo.lock', 'vcpkg.json') }}
 
-    - name: Install vcpkg dependencies
+    # ✅ 关键修正：manifest 模式，不带包名
+    - name: Install vcpkg dependencies (manifest mode)
       run: |
-        $$VCPKG_ROOT/vcpkg install --triplet x64-windows-static
-        
+        $VCPKG_ROOT/vcpkg install --triplet x64-windows-static
+
     - name: Install flutter_rust_bridge_codegen
-      # 锁定版本，防止 API 变更导致编译失败
       run: cargo install flutter_rust_bridge_codegen --version 1.82.6
 
-    - name: Setup Env Vars
+    - name: Setup sccache
+      uses: mozilla-actions/sccache-action@v0.0.6
+
+    - name: Set Environment Variables
       run: |
         echo "LIBCLANG_PATH=C:/Program Files/LLVM/lib" >> $GITHUB_ENV
         echo "SCCACHE_GHA_ENABLED=true" >> $GITHUB_ENV
         echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
-        # 设置 Dart/Flutter 国内镜像（Actions 虽然能直连，但设了更快）
         echo "PUB_HOSTED_URL=https://pub.flutter-io.cn" >> $GITHUB_ENV
         echo "FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn" >> $GITHUB_ENV
 
     - name: Build Portable EXE
       run: |
         python build.py --flutter --portable --hwcodec --vram
-        # build.py 会自动处理 codegen -> flutter build -> cargo build -> 打包
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
