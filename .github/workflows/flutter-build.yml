@@ -62,8 +62,8 @@ jobs:
 
     - name: Install vcpkg dependencies
       run: |
-        $VCPKG_ROOT/vcpkg install libvpx:x64-windows-static libyuv:x64-windows-static opus:x64-windows-static aom:x64-windows-static
-
+        $$VCPKG_ROOT/vcpkg install --triplet x64-windows-static
+        
     - name: Install flutter_rust_bridge_codegen
       # 锁定版本，防止 API 变更导致编译失败
       run: cargo install flutter_rust_bridge_codegen --version 1.82.6
