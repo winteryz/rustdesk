@@ -59,7 +59,7 @@ jobs:
               build-args: "--vram",
             }
     steps:
-      # 缓存环境变量设置
+      # ---------- 缓存环境 ----------
       - name: Export GitHub Actions cache environment variables
         uses: actions/github-script@d7906e4ad0b1822421a7e6a35d5ca353c962f410 # v6
         with:
@@ -67,7 +67,7 @@ jobs:
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
-      # 缓存：Git仓库
+      # ---------- Git ----------
       - name: Cache git repository
         uses: actions/cache@v4
         with:
@@ -75,25 +75,20 @@ jobs:
             ~/.gitconfig
             .git/modules
           key: ${{ runner.os }}-git-${{ hashFiles('.gitmodules') }}
-          restore-keys: |
-            ${{ runner.os }}-git-
 
-      # 检出代码
       - name: Checkout source code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           submodules: recursive
           fetch-depth: 0
 
-      # 缓存：Bridge文件
+      # ---------- Bridge ----------
       - name: Restore bridge files
         uses: actions/cache@v4
         id: cache-bridge
         with:
           path: ./flutter/lib/models/*.freezed.dart
           key: ${{ runner.os }}-bridge-${{ hashFiles('flutter/lib/models/**/*.dart') }}
-          restore-keys: |
-            ${{ runner.os }}-bridge-
 
       - name: Download bridge files (fallback)
         if: steps.cache-bridge.outputs.cache-hit != 'true'
@@ -102,7 +97,7 @@ jobs:
           name: bridge-artifact
           path: ./
 
-      # 缓存：LLVM和Clang
+      # ---------- LLVM ----------
       - name: Cache LLVM and Clang
         uses: actions/cache@v4
         id: cache-llvm
@@ -111,8 +106,6 @@ jobs:
             C:\Program Files\LLVM
             C:\ProgramData\chocolatey\lib\llvm
           key: ${{ runner.os }}-llvm-${{ env.LLVM_VERSION }}
-          restore-keys: |
-            ${{ runner.os }}-llvm-
 
       - name: Install LLVM and Clang
         if: steps.cache-llvm.outputs.cache-hit != 'true'
@@ -120,7 +113,7 @@ jobs:
         with:
           version: ${{ env.LLVM_VERSION }}
 
-      # 缓存：Flutter SDK
+      # ---------- Flutter ----------
       - name: Cache Flutter SDK
         uses: actions/cache@v4
         id: cache-flutter
@@ -128,23 +121,18 @@ jobs:
           path: |
             ${{ runner.tool_cache }}/flutter
             C:\hostedtoolcache\windows\flutter
-          key: ${{ runner.os }}-flutter-${{ matrix.job.arch == 'aarch64' && env.FLUTTER_WINDOWS_ARM_VERSION || env.FLUTTER_VERSION }}-${{ matrix.job.arch }}
-          restore-keys: |
-            ${{ runner.os }}-flutter-
+          key: ${{ runner.os }}-flutter-${{ env.FLUTTER_VERSION }}-${{ matrix.job.arch }}
 
       - name: Install flutter
         if: steps.cache-flutter.outputs.cache-hit != 'true'
         id: flutter
         uses: subosito/flutter-action@2783a3f08e1baf891508463f8c6653c258246225 # v2.12.0
         with:
-          channel: "stable"
-          flutter-version: ${{ matrix.job.arch == 'aarch64' && env.FLUTTER_WINDOWS_ARM_VERSION || env.FLUTTER_VERSION }}
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           architecture: x64
           cache: true
-          cache-key: ${{ runner.os }}-flutter-${{ matrix.job.arch == 'aarch64' && env.FLUTTER_WINDOWS_ARM_VERSION || env.FLUTTER_VERSION }}-${{ matrix.job.arch }}
-          cache-path: ${{ runner.tool_cache }}/flutter
 
-      # Flutter Pub缓存
       - name: Cache Flutter pub dependencies
         uses: actions/cache@v4
         with:
@@ -152,143 +140,39 @@ jobs:
             ${{ env.LOCALAPPDATA }}\Pub\Cache
             ~/.pub-cache
           key: ${{ runner.os }}-flutter-pub-${{ hashFiles('flutter/pubspec.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-flutter-pub-
 
-      # 强制arm64 Dart SDK（仅ARM64）
-      - name: Force arm64 Dart SDK + engine
-        if: ${{ matrix.job.arch == 'aarch64' }}
-        run: |
-          $flutterRoot = "${{ steps.flutter.outputs['CACHE-PATH'] }}"
-          Write-Host "PROCESSOR_ARCHITECTURE=$env:PROCESSOR_ARCHITECTURE"
-          Write-Host "Flutter root: $flutterRoot"
-          Remove-Item -Force "$flutterRoot\bin\cache\engine-dart-sdk.stamp" -ErrorAction SilentlyContinue
-          & "$flutterRoot\bin\internal\update_dart_sdk.ps1"
-          $dartVer = & "$flutterRoot\bin\dart.bat" --version 2>&1 | Out-String
-          Write-Host $dartVer
-          if ($dartVer -notmatch "windows_arm64") {
-            Write-Error "Expected an arm64 Dart SDK but got: $dartVer"
-            exit 1
-          }
-          & "$flutterRoot\bin\flutter.bat" precache --windows
-          $engineDir = "$flutterRoot\bin\cache\artifacts\engine"
-          if (-not (Test-Path "$engineDir\windows-arm64-release")) {
-            Write-Error "Expected windows-arm64-release engine artifacts but they are missing."
-            exit 1
-          }
-        shell: pwsh
-
-      # ===== 修复的引擎替换部分开始 =====
-      # 缓存：自定义Flutter引擎
+      # ---------- 自定义 Flutter Engine ----------
       - name: Cache Flutter Engine
         uses: actions/cache@v4
         id: cache-engine
         with:
           path: windows-x64-release.zip
           key: flutter-engine-${{ env.FLUTTER_VERSION }}-windows-x64
-          restore-keys: |
-            flutter-engine-${{ env.FLUTTER_VERSION }}-
 
       - name: Download custom flutter engine
-        if: ${{ matrix.job.arch == 'x86_64' && steps.cache-engine.outputs.cache-hit != 'true' }}
+        if: matrix.job.arch == 'x86_64' && steps.cache-engine.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
-          Write-Host "Downloading custom Flutter engine..."
-          Invoke-WebRequest -Uri https://github.com/rustdesk/engine/releases/download/main/windows-x64-release.zip -OutFile windows-x64-release.zip
+          Invoke-WebRequest `
+            -Uri https://github.com/rustdesk/engine/releases/download/main/windows-x64-release.zip `
+            -OutFile windows-x64-release.zip
 
       - name: Replace engine with rustdesk custom flutter engine
-        if: ${{ matrix.job.arch == 'x86_64' }}
+        if: matrix.job.arch == 'x86_64'
         shell: pwsh
         run: |
-          flutter doctor -v
           flutter precache --windows
-          
-          # 解压引擎包
-          Write-Host "Extracting custom engine..."
-          Expand-Archive -Path windows-x64-release.zip -DestinationPath windows-x64-release -Force
-          
-          # 动态检测Flutter根目录
+
+          Expand-Archive windows-x64-release.zip -DestinationPath windows-x64-release -Force
+
           $flutterExe = Get-Command flutter | Select-Object -ExpandProperty Source
-          Write-Host "Flutter executable: $flutterExe"
-          
-          # 向上两级目录找到Flutter SDK根目录
           $flutterRoot = Split-Path -Parent (Split-Path -Parent $flutterExe)
-          Write-Host "Detected Flutter root: $flutterRoot"
-          
-          # 验证路径是否存在
-          if (-not (Test-Path $flutterRoot)) {
-            Write-Error "Flutter root not found: $flutterRoot"
-            exit 1
-          }
-          
-          # 构建引擎目标路径
           $enginePath = Join-Path $flutterRoot "bin\cache\artifacts\engine\windows-x64-release"
-          Write-Host "Target engine path: $enginePath"
-          
-          # 确保目标目录存在
-          if (-not (Test-Path $enginePath)) {
-            Write-Host "Creating engine directory..."
-            New-Item -ItemType Directory -Path $enginePath -Force | Out-Null
-          }
-          
-          # 备份原引擎（可选）
-          $backupPath = Join-Path $flutterRoot "bin\cache\artifacts\engine\windows-x64-release-backup"
-          if (Test-Path $enginePath) {
-            Write-Host "Backing up original engine..."
-            if (-not (Test-Path $backupPath)) {
-              New-Item -ItemType Directory -Path $backupPath -Force | Out-Null
-            }
-            Copy-Item -Path "$enginePath\*" -Destination $backupPath -Recurse -Force -ErrorAction SilentlyContinue
-          }
-          
-          # 复制自定义引擎文件
-          Write-Host "Copying custom engine files..."
-          Copy-Item -Path "windows-x64-release\*" -Destination $enginePath -Recurse -Force
-          
-          # 验证复制结果
-          Write-Host "Verifying engine files..."
-          $engineFiles = Get-ChildItem -Path $enginePath -File -ErrorAction SilentlyContinue
-          Write-Host "Found $($engineFiles.Count) files in engine directory:"
-          $engineFiles | ForEach-Object { Write-Host "  - $($_.Name)" }
-          
-          # 验证关键文件
-          $criticalFiles = @("flutter_engine.dll", "flutter_windows.dll")
-          foreach ($file in $criticalFiles) {
-            $filePath = Join-Path $enginePath $file
-            if (Test-Path $filePath) {
-              Write-Host "✓ Found critical file: $file"
-            } else {
-              Write-Warning "Missing critical file: $file"
-            }
-          }
-          
-          Write-Host "Custom engine replacement completed successfully!"
-      # ===== 修复的引擎替换部分结束 =====
 
-      # 缓存：Flutter补丁
-      - name: Cache Flutter patches
-        uses: actions/cache@v4
-        id: cache-patches
-        with:
-          path: ${{ runner.tool_cache }}/flutter/patches
-          key: ${{ runner.os }}-flutter-patches-${{ env.FLUTTER_VERSION }}
+          New-Item -ItemType Directory -Path $enginePath -Force | Out-Null
+          Copy-Item -Path windows-x64-release\* -Destination $enginePath -Recurse -Force
 
-      - name: Patch flutter
-        if: ${{ matrix.job.arch == 'x86_64' && steps.cache-patches.outputs.cache-hit != 'true' }}
-        shell: bash
-        run: |
-          mkdir -p $(dirname $(dirname $(which flutter)))/patches
-          cp .github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff $(dirname $(dirname $(which flutter)))/patches/
-          cd $(dirname $(dirname $(which flutter)))
-          [[ "3.24.5" == ${{env.FLUTTER_VERSION}} ]] && git apply patches/flutter_3.24.4_dropdown_menu_enableFilter.diff
-
-      # ARM64补丁
-      - name: Patch RustDesk sources for Flutter 3.44 (arm64)
-        if: ${{ matrix.job.arch == 'aarch64' }}
-        shell: bash
-        run: bash .github/patches/apply_flutter_3.44_source_patches.sh
-
-      # 缓存：Rust工具链
+      # ---------- Rust ----------
       - name: Cache Rust toolchain
         uses: actions/cache@v4
         with:
@@ -296,26 +180,21 @@ jobs:
             ~/.rustup
             ~/.cargo
           key: ${{ runner.os }}-rust-${{ env.SCITER_RUST_VERSION }}-${{ matrix.job.target }}
-          restore-keys: |
-            ${{ runner.os }}-rust-${{ env.SCITER_RUST_VERSION }}-
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
           toolchain: ${{ env.SCITER_RUST_VERSION }}
           targets: ${{ matrix.job.target }}
-          components: "rustfmt"
+          components: rustfmt
 
-      # Rust编译缓存
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
           prefix-key: ${{ matrix.job.os }}-${{ matrix.job.arch }}
           key: ${{ matrix.job.target }}-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ matrix.job.os }}-${{ matrix.job.arch }}-${{ matrix.job.target }}-
 
-      # 缓存：vcpkg
+      # ---------- vcpkg（✅ 已完全修复） ----------
       - name: Cache vcpkg packages
         uses: actions/cache@v4
         id: cache-vcpkg
@@ -325,11 +204,8 @@ jobs:
             C:\vcpkg\buildtrees
             C:\vcpkg\downloads
           key: ${{ runner.os }}-vcpkg-${{ matrix.job.vcpkg-triplet }}-${{ env.VCPKG_COMMIT_ID }}-${{ hashFiles('vcpkg.json') }}
-          restore-keys: |
-            ${{ runner.os }}-vcpkg-${{ matrix.job.vcpkg-triplet }}-${{ env.VCPKG_COMMIT_ID }}-
-            ${{ runner.os }}-vcpkg-${{ matrix.job.vcpkg-triplet }}-
 
-      - name: Setup vcpkg with Github Actions binary cache
+      - name: Setup vcpkg
         uses: lukka/run-vcpkg@b1a0dd252f06b9e25b3c022a9a03bd7a427fb6a2 # v11
         with:
           vcpkgDirectory: C:\vcpkg
@@ -339,10 +215,19 @@ jobs:
       - name: Install vcpkg dependencies
         env:
           VCPKG_DEFAULT_HOST_TRIPLET: ${{ matrix.job.vcpkg-triplet }}
+        shell: pwsh
         run: |
-          if (! (Test-Path "C:\vcpkg\installed\${{ matrix.job.vcpkg-triplet }}\.stamp")) {
-            if (! $VCPKG_ROOT/vcpkg install --triplet ${{ matrix.job.vcpkg-triplet }} --x-install-root="$VCPKG_ROOT/installed") {
-              Get-ChildItem "${VCPKG_ROOT}\" -Recurse -Filter "*.log" | ForEach-Object {
+          $stamp = "C:\vcpkg\installed\${{ matrix.job.vcpkg-triplet }}\.stamp"
+          $vcpkgExe = Join-Path $env:VCPKG_ROOT "vcpkg.exe"
+          $installRoot = Join-Path $env:VCPKG_ROOT "installed"
+
+          if (-not (Test-Path $stamp)) {
+            & $vcpkgExe install `
+              --triplet ${{ matrix.job.vcpkg-triplet }} `
+              --x-install-root="$installRoot"
+
+            if ($LASTEXITCODE -ne 0) {
+              Get-ChildItem "$env:VCPKG_ROOT" -Recurse -Filter "*.log" | ForEach-Object {
                 Write-Host "$($_.FullName):"
                 Write-Host "======"
                 Get-Content $_.FullName
@@ -350,21 +235,24 @@ jobs:
               }
               exit 1
             }
-            New-Item -ItemType File -Path "C:\vcpkg\installed\${{ matrix.job.vcpkg-triplet }}\.stamp" -Force
-          }
-          head -n 100 "${VCPKG_ROOT}/buildtrees/ffmpeg/build-${{ matrix.job.vcpkg-triplet }}-rel-out.log" -ErrorAction SilentlyContinue
-        shell: pwsh
 
-      # 设置SODIUM_LIB_DIR（仅ARM64）
-      - name: Set SODIUM_LIB_DIR (arm64)
-        if: ${{ matrix.job.arch == 'aarch64' }}
+            New-Item -ItemType File -Path $stamp -Force | Out-Null
+          }
+
+          $log = Join-Path $env:VCPKG_ROOT "buildtrees/ffmpeg/build-${{ matrix.job.vcpkg-triplet }}-rel-out.log"
+          if (Test-Path $log) {
+            Get-Content $log -Head 100
+          }
+
+      # ---------- SODIUM_LIB_DIR ----------
+      - name: Set SODIUM_LIB_DIR
+        if: matrix.job.arch == 'aarch64'
         shell: bash
         run: echo "SODIUM_LIB_DIR=$VCPKG_ROOT/installed/${{ matrix.job.vcpkg-triplet }}/lib" >> "$GITHUB_ENV"
 
-      # 缓存：下载的外部依赖
+      # ---------- 外部依赖 ----------
       - name: Cache external downloads
         uses: actions/cache@v4
-        id: cache-downloads
         with:
           path: |
             usbmmidd_v2.zip
@@ -372,10 +260,10 @@ jobs:
             printer_driver_adapter.zip
             sha256sums
           key: ${{ runner.os }}-downloads-${{ hashFiles('res/job.py') }}
-          restore-keys: |
-            ${{ runner.os }}-downloads-
 
+      # ---------- Build ----------
       - name: Build rustdesk
+        shell: pwsh
         run: |
           python3 .\build.py --portable --flutter --skip-portable-pack --hwcodec ${{ matrix.job.build-args }}
           mv ./flutter/build/windows/${{ matrix.job.flutter-arch }}/runner/Release ./rustdesk
@@ -384,9 +272,9 @@ jobs:
             Invoke-WebRequest -Uri https://github.com/rustdesk-org/rdev/releases/download/usbmmidd_v2/usbmmidd_v2.zip -OutFile usbmmidd_v2.zip
           }
           Expand-Archive usbmmidd_v2.zip -DestinationPath .
-          Remove-Item -Path usbmmidd_v2\Win32 -Recurse -Force -ErrorAction SilentlyContinue
-          Remove-Item -Path "usbmmidd_v2\deviceinstaller64.exe", "usbmmidd_v2\deviceinstaller.exe", "usbmmidd_v2\usbmmidd.bat" -Force -ErrorAction SilentlyContinue
-          mv -Force .\usbmmidd_v2 ./rustdesk
+          Remove-Item -Recurse -Force usbmmidd_v2\Win32 -ErrorAction SilentlyContinue
+          Remove-Item -Force usbmmidd_v2\deviceinstaller*.exe, usbmmidd_v2\usbmmidd.bat -ErrorAction SilentlyContinue
+          mv -Force usbmmidd_v2 ./rustdesk
 
           try {
             if (!(Test-Path rustdesk_printer_driver_v4-1.4.zip)) {
@@ -395,46 +283,31 @@ jobs:
               Invoke-WebRequest -Uri https://github.com/rustdesk/hbb_common/releases/download/driver/sha256sums -OutFile sha256sums
             }
 
-            $checksum_driver = (Select-String -Path .\sha256sums -Pattern '^([a-fA-F0-9]{64}) \*rustdesk_printer_driver_v4-1\.4\.zip$').Matches.Groups[1].Value
-            $downloadsum_driver = Get-FileHash -Path rustdesk_printer_driver_v4-1.4.zip -Algorithm SHA256
-            $checksum_adapter = (Select-String -Path .\sha256sums -Pattern '^([a-fA-F0-9]{64}) \*printer_driver_adapter\.zip$').Matches.Groups[1].Value
-            $downloadsum_adapter = Get-FileHash -Path printer_driver_adapter.zip -Algorithm SHA256
-            
-            if ($checksum_driver -eq $downloadsum_driver.Hash -and $checksum_adapter -eq $downloadsum_adapter.Hash) {
+            $ok = $true
+            $ok = $ok -and ((Get-FileHash rustdesk_printer_driver_v4-1.4.zip -Algorithm SHA256).Hash -eq
+              (Select-String sha256sums -Pattern 'rustdesk_printer_driver_v4-1\.4\.zip').Line.Split(' ')[0])
+            $ok = $ok -and ((Get-FileHash printer_driver_adapter.zip -Algorithm SHA256).Hash -eq
+              (Select-String sha256sums -Pattern 'printer_driver_adapter\.zip').Line.Split(' ')[0])
+
+            if ($ok) {
               Expand-Archive rustdesk_printer_driver_v4-1.4.zip -DestinationPath .
-              mkdir ./rustdesk/drivers -Force
-              mv -Force .\rustdesk_printer_driver_v4-1.4 ./rustdesk/drivers/RustDeskPrinterDriver
+              New-Item ./rustdesk/drivers -ItemType Directory -Force | Out-Null
+              mv rustdesk_printer_driver_v4-1.4 ./rustdesk/drivers/RustDeskPrinterDriver
               Expand-Archive printer_driver_adapter.zip -DestinationPath .
-              mv -Force .\printer_driver_adapter.dll ./rustdesk
+              mv printer_driver_adapter.dll ./rustdesk
             }
           } catch {
-            Write-Host "Ignore the printer driver error."
+            Write-Host "Ignore printer driver error"
           }
-        shell: pwsh
 
-      # 查找Runner.res
-      - name: find Runner.res
-        continue-on-error: true
-        shell: bash
-        run: |
-          runner_res=$(find . -name "Runner.res" | head -n 1);
-          if [ -n "$runner_res" ]; then
-            echo "Runner.res: $runner_res";
-            cp $runner_res ./libs/portable/Runner.res;
-            ls -l ./libs/portable/Runner.res;
-          else
-            echo "Runner.res: not found";
-          fi
-
-      # 下载TopMostWindow工件
-      - name: Download RustDeskTempTopMostWindow artifacts
-        if: ${{ inputs.upload-artifact }}
+      # ---------- Artifacts ----------
+      - name: Download TopMostWindow
+        if: inputs.upload-artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: topmostwindow-artifacts-x64
-          path: "./rustdesk"
+          path: rustdesk
 
-      # 上传未签名版本
       - name: Upload unsigned
         if: env.UPLOAD_ARTIFACT == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -443,58 +316,28 @@ jobs:
           path: rustdesk
           retention-days: 7
 
-      # 签名文件
-      - name: Sign rustdesk files
-        if: env.UPLOAD_ARTIFACT == 'true' && env.SIGN_BASE_URL != '-2'
-        shell: bash
-        run: |
-          pip3 install requests argparse
-          BASE_URL=${{ env.SIGN_BASE_URL }} SECRET_KEY=${{ secrets.SIGN_SECRET_KEY }} python3 res/job.py sign_files ./rustdesk/
-
-      # 构建自解压可执行文件
-      - name: Build self-extracted executable
-        shell: bash
-        if: env.UPLOAD_ARTIFACT == 'true'
-        run: |
-          sed -i '/dpiAware/d' res/manifest.xml
-          pushd ./libs/portable
-          pip3 install -r requirements.txt
-          python3 ./generate.py -f ../../rustdesk/ -o . -e ../../rustdesk/rustdesk.exe
-          popd
-          mkdir -p ./SignOutput
-          mv ./target/release/rustdesk-portable-packer.exe ./SignOutput/rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}.exe
-
-      # 添加MSBuild到PATH
+      # ---------- MSI / EXE ----------
       - name: Add MSBuild to PATH
         uses: microsoft/setup-msbuild@6fb02220983dee41ce7ae257b6f4d8f9bf5ed4ce # v2
 
-      # 构建MSI
       - name: Build msi
         if: env.UPLOAD_ARTIFACT == 'true'
+        shell: pwsh
         run: |
-          pushd ./res/msi
+          pushd res/msi
           python preprocess.py --arp -d ../../rustdesk
           nuget restore msi.sln
           msbuild msi.sln -p:Configuration=Release -p:Platform=x64 /p:TargetVersion=Windows10
-          $msi = Get-ChildItem ./Package/bin/*/Release/en-us/Package.msi | Select-Object -First 1
+          $msi = Get-ChildItem Package/bin/*/Release/en-us/*.msi | Select-Object -First 1
           mv $msi.FullName ../../SignOutput/rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}.msi
-          sha256sum ../../SignOutput/rustdesk-*.msi
-        shell: pwsh
+          popd
 
-      # 签名自解压文件
-      - name: Sign rustdesk self-extracted file
-        if: env.UPLOAD_ARTIFACT == 'true' && env.SIGN_BASE_URL != '-2'
-        shell: bash
-        run: |
-          BASE_URL=${{ env.SIGN_BASE_URL }} SECRET_KEY=${{ secrets.SIGN_SECRET_KEY }} python3 res/job.py sign_files ./SignOutput
-
-      # 发布Release
       - name: Publish Release
-        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         if: env.UPLOAD_ARTIFACT == 'true'
+        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
           prerelease: true
           tag_name: ${{ env.TAG_NAME }}
           files: |
-            ./SignOutput/rustdesk-*.msi
-            ./SignOutput/rustdesk-*.exe
+            SignOutput/rustdesk-*.msi
+            SignOutput/rustdesk-*.exe
